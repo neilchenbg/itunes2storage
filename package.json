@@ -1,0 +1,18 @@
+{
+  "name": "itunes2storage",
+  "version": "0.0.1",
+  "description": "Copy your playlist and file to storage from itunes library.",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "main": "node dist/main.js"
+  },
+  "author": "CloudChen",
+  "license": "ISC",
+  "devDependencies": {
+    "babel-core": "^6.10.4",
+    "babel-loader": "^6.2.4",
+    "babel-preset-es2015": "^6.9.0",
+    "webpack": "^1.13.1"
+  }
+}
