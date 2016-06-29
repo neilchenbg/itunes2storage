@@ -12,5 +12,8 @@
   "license": "ISC",
   "devDependencies": {
     "babel-preset-es2015": "^6.9.0"
+  },
+  "dependencies": {
+    "underscore": "^1.8.3"
   }
 }
