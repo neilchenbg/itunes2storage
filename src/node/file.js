@@ -2,7 +2,9 @@ import {traceNotice, traceError} from '../service/log';
 import {
   readFile as fsReadFile,
   writeFile as fsWriteFile,
+  unlink as fsDeleteFile,
   mkdir as fsMkDir,
+  readdir as fsReaddir,
   stat as fsStat
 } from 'fs';
 import {
@@ -10,11 +12,11 @@ import {
 } from 'fs-extra';
 
 const _traceError = (message, funcName) => {
-  traceError(message, 'service.log', funcName);
+  traceError(message, 'node.file', funcName);
 };
 
 const _traceNotice = (message, funcName) => {
-  traceNotice(message, 'service.log', funcName);
+  traceNotice(message, 'node.file', funcName);
 };
 
 const checkFile = (path) => {
@@ -80,6 +82,19 @@ const writeFile = (path, content) => {
       } else {
         _traceError(error.toString(), writeFile.name);
         reject(`Failure to write file "${path}"`);
+      }
+    });
+  });
+};
+
+const deleteFile = (path) => {
+  return new Promise((resolve, reject) => {
+    fsDeleteFile(path, (error, result) => {
+      if(!error) {
+        resolve(result);
+      } else {
+        _traceError(error.toString(), deleteFile.name);
+        reject(`Failure to delete file "${path}"`);
       }
     });
   });
@@ -173,14 +188,29 @@ const mkDirRev = (path, pathRoot = '') => {
   });
 };
 
+const readDir = (path) => {
+  return new Promise((resolve, reject) => {
+    fsReaddir(path, 'utf8', (error, list) => {
+      if(!error) {
+        resolve(list);
+      } else {
+        _traceError(error.toString(), readDir.name);
+        reject(`Failure to read directory "${path}"`);
+      }
+    });
+  });
+};
+
 export {
   checkFile,
   checkDir,
   readFile,
   writeFile,
+  deleteFile,
   copyFile,
   readFileAsJSON,
   writeFileAsJSON,
   mkDir,
-  mkDirRev
+  mkDirRev,
+  readDir
 };
