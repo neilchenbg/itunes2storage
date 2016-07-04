@@ -21,7 +21,6 @@ class App {
     this.settings = {};
     this.package = {};
     this.tracks = {};
-    this.playlists = {};
     this.playlistPath = '';
   }
 
@@ -134,16 +133,13 @@ class App {
             Math.ceil(trackItem['Total Time'] / 1000)
           ];
 
-      let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`,
-          trackNewPath = `${that.settings.targetPath}${trackNewName}`,
-          trackNewM3uPath = `../${trackNewName}`;
+      let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`;
 
       tracks[trackPID] = {
         pid: trackPID,
         title: `${trackAlbum} - ${trackArtist}`,
-        path: trackNewM3uPath,
+        path: trackNewName,
         src: trackSrc,
-        dest: trackNewPath,
         time: trackTotalTime,
         modified: trackModified
       };
@@ -175,19 +171,19 @@ class App {
       let [addCount, updateCount, deleteCount] = [0, 0, 0];
 
       for (let trackPId of addTrackPIds) {
-        promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], tracks[trackPId]['dest']);
+        promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
         addCount += 1;
       }
 
       for (let trackPId of updateTrackPIds) {
         if(tracks[trackPId]['modified'].toString() != new Date(that.tracks[trackPId]['modified']).toString()) {
-          promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], tracks[trackPId]['dest']);
+          promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
           updateCount += 1;
         }
       }
 
       for (let trackPId of deleteTrackPIds) {
-        promiseArray[promiseArray.length] = deleteFile(that.tracks[trackPId]['dest']);
+        promiseArray[promiseArray.length] = deleteFile(`${that.settings.targetPath}${that.tracks[trackPId]['path']}`);
         deleteCount += 1;
       }
 
@@ -210,30 +206,43 @@ class App {
     let that = this;
 
     return new Promise((resolve, reject) => {
-      let promiseArray = [];
+      readDir(that.playlistPath)
+        .then((result) => {
+          let promiseArray = [];
 
-      for (let playList of playlists) {
-        let m3uWriter = m3u.extendedWriter();
-
-        m3uWriter.comment(`Play list create by ${that.package.name}, author: ${that.package.author}`);
-        m3uWriter.write();
-
-        for (let trackPID of playList.tracks) {
-          if (tracks[trackPID]) {
-            let [m3uPath, m3uTime, m3uTitle] = [
-              tracks[trackPID]['path'],
-              tracks[trackPID]['time'],
-              tracks[trackPID]['title']
-            ];
-            m3uWriter.file(m3uPath, m3uTime, m3uTitle);
+          for (let entryName of result) {
+            if (entryName.split('.').pop() == 'm3u') {
+              promiseArray[promiseArray.length] = deleteFile(`${that.playlistPath}${entryName}`);
+            }
           }
-        }
 
-        promiseArray[promiseArray.length] = writeFile(`${that.playlistPath}${playList.name}.m3u`, m3uWriter.toString());
-      }
+          return Promise.all(promiseArray);
+        })
+        .then((result) => {
+          let promiseArray = [];
 
-      Promise
-        .all(promiseArray)
+          for (let playList of playlists) {
+            let m3uWriter = m3u.extendedWriter();
+
+            m3uWriter.comment(`Play list create by ${that.package.name}, author: ${that.package.author}`);
+            m3uWriter.write();
+
+            for (let trackPID of playList.tracks) {
+              if (tracks[trackPID]) {
+                let [m3uPath, m3uTime, m3uTitle] = [
+                  `${tracks[trackPID]['path']}`,
+                  tracks[trackPID]['time'],
+                  tracks[trackPID]['title']
+                ];
+                m3uWriter.file(m3uPath, m3uTime, m3uTitle);
+              }
+            }
+
+            promiseArray[promiseArray.length] = writeFile(`${that.playlistPath}${playList.name}.m3u`, m3uWriter.toString());
+          }
+
+          return Promise.all(promiseArray);
+        })
         .then((result) => {
           that.traceNotice(`處理播放清單完成`, 'updatePlaylists');
           resolve();
