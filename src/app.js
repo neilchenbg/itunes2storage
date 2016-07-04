@@ -133,7 +133,8 @@ class App {
             Math.ceil(trackItem['Total Time'] / 1000)
           ];
 
-      let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`;
+      // let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`;
+      let trackNewName = `${trackPID}.${trakcExt}`;
 
       tracks[trackPID] = {
         pid: trackPID,
@@ -230,7 +231,7 @@ class App {
             for (let trackPID of playList.tracks) {
               if (tracks[trackPID]) {
                 let [m3uPath, m3uTime, m3uTitle] = [
-                  `${tracks[trackPID]['path']}`,
+                  `../${tracks[trackPID]['path']}`,
                   tracks[trackPID]['time'],
                   tracks[trackPID]['title']
                 ];
