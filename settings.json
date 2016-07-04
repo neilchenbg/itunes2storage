@@ -1,4 +1,5 @@
 {
   "itunesXMLPath": "/Users/cloudchen/Music/iTunes/iTunes Library.xml",
-  "targetPath": "/Users/cloudchen/Documents"
+  "targetPath": "/Users/cloudchen/Documents/iTunesMusic/",
+  "playlistPrefix": "Sync"
 }

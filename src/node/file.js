@@ -5,6 +5,9 @@ import {
   mkdir as fsMkDir,
   stat as fsStat
 } from 'fs';
+import {
+  copy as fsCopy
+} from 'fs-extra';
 
 const _traceError = (message, funcName) => {
   traceError(message, 'service.log', funcName);
@@ -82,6 +85,19 @@ const writeFile = (path, content) => {
   });
 };
 
+const copyFile = (src, dest) => {
+  return new Promise((resolve, reject) => {
+    fsCopy(src, dest, {clobber: true}, (error) => {
+      if(!error) {
+        resolve();
+      } else {
+        _traceError(error.toString(), copyFile.name);
+        reject(`Failure to copy file "${src}" to "${dest}"`);
+      }
+    });
+  });
+};
+
 const readFileAsJSON = (path) => {
   return new Promise((resolve, reject) => {
     readFile(path)
@@ -127,19 +143,22 @@ const mkDir = (path) => {
   });
 };
 
-const mkDirRev = (path) => {
+const mkDirRev = (path, pathRoot = '') => {
   return new Promise((resolve, reject) => {
     let pathArray = path.split('/'),
         mkDirArray = [],
-        promiseArray = [];
+        promiseArray = [],
+        num = 0;
 
     for (let dirName of pathArray) {
-      if (dirName == '') {
+      if (num != 0 && dirName == '') {
         continue;
       }
 
       mkDirArray[mkDirArray.length] = dirName;
-      promiseArray[promiseArray.length] = mkDir(mkDirArray.join('/') + '/');
+      promiseArray[promiseArray.length] = mkDir(pathRoot + mkDirArray.join('/') + '/');
+
+      num ++;
     }
 
     Promise
@@ -159,6 +178,7 @@ export {
   checkDir,
   readFile,
   writeFile,
+  copyFile,
   readFileAsJSON,
   writeFileAsJSON,
   mkDir,
