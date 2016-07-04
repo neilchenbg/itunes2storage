@@ -6,70 +6,100 @@ import {traceNotice, traceError} from './service/log';
 import {
   readFile,
   writeFile,
+  deleteFile,
   copyFile,
   readFileAsJSON,
   writeFileAsJSON,
   mkDir,
-  checkDir
+  readDir,
+  checkDir,
+  checkFile
 } from './node/file';
 
-let _settings = {},
-    _package = {},
-    _tracks = {},
-    _m3uTracks = {},
-    _appRootPath = '';
+class App {
+  App() {
+    this.settings = {};
+    this.package = {};
+    this.tracks = {};
+    this.playlists = {};
+    this.playlistPath = '';
+  }
 
-Promise
-  .all([
-    readFileAsJSON('settings.json'),
-    readFileAsJSON('package.json')
-  ])
-  .then((result) =>  {
-    [_settings, _package] = result;
-    return checkDir(_settings.targetPath);
-  })
-  .then((result) => {
-    _appRootPath = `${_settings.targetPath}_${_package.name}/`;
-    return mkDir(_appRootPath);
-  })
-  .then((result) => {
-    return readFile(_settings.itunesXMLPath);
-  })
-  .then((result) => {
-    let itunesLibrary = {};
+  traceError(message, funcName) {
+    traceError(message, 'App', funcName);
+  }
 
-    try {
-      itunesLibrary = plist.parse(result);
-    } catch(e) {
-      throw new Error(e.toString());
-    }
+  traceNotice(message, funcName) {
+    traceNotice(message, 'App', funcName);
+  }
 
-    traceNotice(`已讀取itunes資料庫檔案 資料庫版本: ${itunesLibrary['Application Version']}`, 'app');
+  loadTracksFromFile() {
+    let that = this;
 
-    let playLists = [],
-        trackIds = [];
+    return new Promise((resolve, reject) => {
+      readFileAsJSON(`${that.playlistPath}tracks.json`)
+        .then((result) => {
+          that.tracks = result;
+          resolve();
+        })
+        .catch((error) => {
+          that.tracks = {};
+          that.traceError(error, 'getTracksFromFile');
+          resolve();
+        });
+    });
+  }
 
-    if (itunesLibrary['Playlists'] && isArray(itunesLibrary['Playlists']) && itunesLibrary['Playlists'].length > 0) {
-      for (let playList of itunesLibrary['Playlists']) {
+  loadItunesLibrary(libraryPath) {
+    let that = this;
+
+    return new Promise((resolve, reject) => {
+      readFile(libraryPath)
+        .then((result) => {
+          let library = {};
+
+          try {
+            library = plist.parse(result);
+          } catch(e) {
+            that.traceError(e.toString(), 'loadItunesLibrary');
+            reject(`無法解析資料庫XML檔案，路徑: ${libraryPath}`);
+          }
+
+          resolve(library);
+        })
+        .catch((error) => {
+          that.traceError(error, 'loadItunesLibrary');
+          reject(`無法讀取資料庫XML檔案，路徑: ${libraryPath}`);
+        });
+    });
+  }
+
+  getPlaylistsAndTracksFromLibrary(library) {
+    let that = this,
+        playLists = [],
+        trackIds = [],
+        tracks = {};
+
+    if (library['Playlists'] && isArray(library['Playlists']) && library['Playlists'].length > 0) {
+      for (let playList of library['Playlists']) {
         if (
           playList['Name'] &&
-          playList['Name'].indexOf(_settings.playlistPrefix + '_') != -1 &&
+          playList['Name'].indexOf(that.settings.playlistPrefix + '_') != -1 &&
           playList['Playlist Items'] &&
           isArray(playList['Playlist Items'])
         ) {
           let tmpTrackIds = [];
 
           for (let playListItem of playList['Playlist Items']) {
-            if(itunesLibrary['Tracks'][playListItem['Track ID']]) {
+            if(library['Tracks'][playListItem['Track ID']]) {
               trackIds[trackIds.length] = playListItem['Track ID'];
-              tmpTrackIds[tmpTrackIds.length] = itunesLibrary['Tracks'][playListItem['Track ID']]['Persistent ID'];
+              tmpTrackIds[tmpTrackIds.length] = library['Tracks'][playListItem['Track ID']]['Persistent ID'];
             }
           }
 
           playLists[playLists.length] = {
-            id: playList['Playlist ID'],
             pid: playList['Playlist Persistent ID'],
-            name: playList['Name'].replace(_settings.playlistPrefix + '_', ''),
+            name: playList['Name'].replace(that.settings.playlistPrefix + '_', ''),
             tracks: tmpTrackIds
           };
         }
@@ -78,16 +108,21 @@ Promise
 
     trackIds = [...new Set(trackIds)];
 
-    let promiseArray = [];
-
     for (let trackId of trackIds) {
-      if (!itunesLibrary['Tracks'][trackId]) {
+      if (!library['Tracks'][trackId]) {
         continue;
       }
 
-      let trackItem = itunesLibrary['Tracks'][trackId],
-          trackSrc = decode(trackItem['Location'].replace('file://', '')),
-          [trackPID, trackName, trackArtist, trackAlbum, trackDiskNumber, trackNumber, trakcExt, trackModified, trackTotalTime] = [
+      let trackItem = library['Tracks'][trackId],
+          trackSrc = decode(trackItem['Location']);
+
+      if (trackSrc.indexOf('file://localhost/') != -1) {
+        trackSrc = trackSrc.replace('file://localhost/', '');
+      } else if(trackSrc.indexOf('file://') != -1) {
+        trackSrc = trackSrc.replace('file://', '');
+      }
+
+      let [trackPID, trackName, trackArtist, trackAlbum, trackDiskNumber, trackNumber, trakcExt, trackModified, trackTotalTime] = [
             trackItem['Persistent ID'],
             trackItem['Name'],
             trackItem['Artist'],
@@ -98,54 +133,176 @@ Promise
             trackItem['Date Modified'],
             Math.ceil(trackItem['Total Time'] / 1000)
           ];
-      // let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`,
-      let trackNewName = `${trackPID}.${trakcExt}`,
-          trackNewPath = `${_settings.targetPath}${trackNewName}`,
+
+      let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`,
+          trackNewPath = `${that.settings.targetPath}${trackNewName}`,
           trackNewM3uPath = `../${trackNewName}`;
 
-      _tracks[trackPID] = {
-        pid: trackPID,
-        path: trackNewPath,
-        modified: trackModified
-      };
-      _m3uTracks[trackPID] = {
+      tracks[trackPID] = {
         pid: trackPID,
         title: `${trackAlbum} - ${trackArtist}`,
         path: trackNewM3uPath,
-        time: trackTotalTime
+        src: trackSrc,
+        dest: trackNewPath,
+        time: trackTotalTime,
+        modified: trackModified
       };
-
-      promiseArray[promiseArray.length] = copyFile(trackSrc, trackNewPath);
     }
 
-    promiseArray[promiseArray.length] = writeFileAsJSON(`${_appRootPath}tracks.json`, _tracks);
-    promiseArray[promiseArray.length] = writeFileAsJSON(`${_appRootPath}playlists.json`, _m3uTracks);
+    return [playLists, tracks];
+  }
 
-    for (let playList of playLists) {
-      let m3uWriter = m3u.extendedWriter();
+  updateTracks(tracks) {
+    let that = this;
 
-      m3uWriter.comment(`Play list create by ${_package.name}, author: ${_package.author}`);
-      m3uWriter.write();
+    return new Promise((resolve, reject) => {
+      let trackPIds = new Set(),
+          trackPIdsLast = new Set(),
+          promiseArray = [];
 
-      for (let trackPID of playList.tracks) {
-        if (_m3uTracks[trackPID]) {
-          let [m3uPath, m3uTime, m3uTitle] = [
-            _m3uTracks[trackPID].path,
-            _m3uTracks[trackPID].time,
-            _m3uTracks[trackPID].title
-          ];
-          m3uWriter.file(m3uPath, m3uTime, m3uTitle);
+      for (let trackPId in tracks) {
+        trackPIds.add(trackPId);
+      }
+
+      for (let trackPId in that.tracks) {
+        trackPIdsLast.add(trackPId);
+      }
+
+      let addTrackPIds = [...new Set([...trackPIds].filter(x => !trackPIdsLast.has(x)))],
+          updateTrackPIds = [...new Set([...trackPIds].filter(x => trackPIdsLast.has(x)))],
+          deleteTrackPIds = [...new Set([...trackPIdsLast].filter(x => !trackPIds.has(x)))];
+
+      let [addCount, updateCount, deleteCount] = [0, 0, 0];
+
+      for (let trackPId of addTrackPIds) {
+        promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], tracks[trackPId]['dest']);
+        addCount += 1;
+      }
+
+      for (let trackPId of updateTrackPIds) {
+        if(tracks[trackPId]['modified'].toString() != new Date(that.tracks[trackPId]['modified']).toString()) {
+          promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], tracks[trackPId]['dest']);
+          updateCount += 1;
         }
       }
 
-      promiseArray[promiseArray.length] = writeFile(`${_appRootPath}${playList.name}.m3u`, m3uWriter.toString());
-    }
+      for (let trackPId of deleteTrackPIds) {
+        promiseArray[promiseArray.length] = deleteFile(that.tracks[trackPId]['dest']);
+        deleteCount += 1;
+      }
 
-    return Promise.all(promiseArray);
-  })
-  .then(() => {
-    traceNotice('已完成同步', 'app');
+      promiseArray[promiseArray.length] = writeFileAsJSON(`${that.playlistPath}tracks.json`, tracks);
+
+      Promise
+        .all(promiseArray)
+        .then((result) => {
+          that.traceNotice(`同步清單完成，新增 ${addCount} 首歌曲，更新 ${updateCount} 首歌曲，移除 ${deleteCount} 首歌曲`, 'updateTracks');
+          resolve();
+        })
+        .catch((error) => {
+          that.traceError(error, 'updateTracks');
+          reject(`處理歌曲清單錯誤`);
+        });
+    });
+  }
+
+  updatePlaylists(playlists, tracks) {
+    let that = this;
+
+    return new Promise((resolve, reject) => {
+      let promiseArray = [];
+
+      for (let playList of playlists) {
+        let m3uWriter = m3u.extendedWriter();
+
+        m3uWriter.comment(`Play list create by ${that.package.name}, author: ${that.package.author}`);
+        m3uWriter.write();
+
+        for (let trackPID of playList.tracks) {
+          if (tracks[trackPID]) {
+            let [m3uPath, m3uTime, m3uTitle] = [
+              tracks[trackPID]['path'],
+              tracks[trackPID]['time'],
+              tracks[trackPID]['title']
+            ];
+            m3uWriter.file(m3uPath, m3uTime, m3uTitle);
+          }
+        }
+
+        promiseArray[promiseArray.length] = writeFile(`${that.playlistPath}${playList.name}.m3u`, m3uWriter.toString());
+      }
+
+      Promise
+        .all(promiseArray)
+        .then((result) => {
+          that.traceNotice(`處理播放清單完成`, 'updatePlaylists');
+          resolve();
+        })
+        .catch((error) => {
+          that.traceError(error, 'updatePlaylists');
+          reject(`處理播放清單錯誤`);
+        });
+    });
+  }
+
+  run() {
+    let that = this;
+
+    return new Promise((resolve, reject) => {
+      Promise
+        .all([
+          readFileAsJSON('settings.json'),
+          readFileAsJSON('package.json')
+        ])
+        .then((result) => {
+          [that.settings, that.package] = result;
+
+          that.traceNotice(`載入設定檔案完成`, 'run');
+
+          return checkDir(that.settings.targetPath);
+        })
+        .then((result) => {
+          that.playlistPath = `${that.settings.targetPath}_${that.package.name}/`;
+
+          return mkDir(that.playlistPath);
+        })
+        .then((result) => {
+          that.traceNotice(`建立播放清單資料夾 "${that.playlistPath}" 完成`, 'run');
+
+          return that.loadTracksFromFile();
+        })
+        .then((result) => {
+          that.traceNotice(`讀取歌曲清單完成`, 'run');
+
+          return that.loadItunesLibrary(that.settings.itunesXMLPath);
+        })
+        .then((result) => {
+          that.traceNotice(`讀取itunes資料庫完成，資料庫版本: ${result['Application Version']}`, 'run');
+
+          let [playlists, tracks] = that.getPlaylistsAndTracksFromLibrary(result);
+
+          return Promise.all([
+            that.updateTracks(tracks),
+            that.updatePlaylists(playlists, tracks)
+          ]);
+        })
+        .then((result) => {
+          resolve('執行完成');
+        })
+        .catch((error) => {
+          that.traceError(error, 'run');
+          reject('執行失敗');
+        });
+    });
+  }
+}
+
+let app = new App();
+app
+  .run()
+  .then((result) => {
+    console.log(result);
   })
   .catch((error) => {
-    traceError(error, 'app');
+    console.log(error);
   });
