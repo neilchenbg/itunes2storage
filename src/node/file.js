@@ -91,7 +91,6 @@ const deleteFile = (path) => {
   return new Promise((resolve, reject) => {
     fsDeleteFile(path, (error, result) => {
       if(!error) {
-        _traceNotice(`移除檔案 "${path}" 完成`, 'deleteFile');
         resolve(result);
       } else {
         _traceError(error.toString(), deleteFile.name);
@@ -105,7 +104,6 @@ const copyFile = (src, dest) => {
   return new Promise((resolve, reject) => {
     fsCopy(src, dest, {clobber: true}, (error) => {
       if(!error) {
-        _traceNotice(`搬移檔案 "${src}" 到 "${dest}" 完成`, 'copyFile');
         resolve();
       } else {
         _traceError(error.toString(), copyFile.name);

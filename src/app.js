@@ -149,6 +149,26 @@ class App {
     return [playLists, tracks];
   }
 
+  copyTracks(currentIndex, copyFileArray, finallyCallback) {
+    let that = this;
+
+    if(copyFileArray[currentIndex]) {
+      let [fileSrc, fileDest] = copyFileArray[currentIndex];
+
+      copyFile(fileSrc, fileDest)
+        .then((result) => {
+          that.traceNotice(`搬移檔案 "${fileSrc}" 到 "${fileDest}" 完成`, 'copyTracks');
+          that.copyTracks(currentIndex + 1, copyFileArray, finallyCallback);
+        })
+        .catch((error) => {
+          that.traceError(error, 'copyTracks');
+          that.copyTracks(currentIndex + 1, copyFileArray, finallyCallback);
+        });
+    } else {
+      finallyCallback();
+    }
+  }
+
   updateTracks(tracks) {
     let that = this;
 
@@ -171,35 +191,41 @@ class App {
 
       let [addCount, updateCount, deleteCount] = [0, 0, 0];
 
+      let copyFiles = [];
+
       for (let trackPId of addTrackPIds) {
-        promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
+        copyFiles[copyFiles.length] = [tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`];
+        // promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
         addCount += 1;
       }
 
       for (let trackPId of updateTrackPIds) {
         if(tracks[trackPId]['modified'].toString() != new Date(that.tracks[trackPId]['modified']).toString()) {
-          promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
+          copyFiles[copyFiles.length] = [tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`];
+          // promiseArray[promiseArray.length] = copyFile(tracks[trackPId]['src'], `${that.settings.targetPath}${tracks[trackPId]['path']}`);
           updateCount += 1;
         }
       }
 
-      for (let trackPId of deleteTrackPIds) {
-        promiseArray[promiseArray.length] = deleteFile(`${that.settings.targetPath}${that.tracks[trackPId]['path']}`);
-        deleteCount += 1;
-      }
+      that.copyTracks(0, copyFiles, () => {
+        for (let trackPId of deleteTrackPIds) {
+          promiseArray[promiseArray.length] = deleteFile(`${that.settings.targetPath}${that.tracks[trackPId]['path']}`);
+          deleteCount += 1;
+        }
 
-      promiseArray[promiseArray.length] = writeFileAsJSON(`${that.playlistPath}tracks.json`, tracks);
+        promiseArray[promiseArray.length] = writeFileAsJSON(`${that.playlistPath}tracks.json`, tracks);
 
-      Promise
-        .all(promiseArray)
-        .then((result) => {
-          that.traceNotice(`同步清單完成，新增 ${addCount} 首歌曲，更新 ${updateCount} 首歌曲，移除 ${deleteCount} 首歌曲`, 'updateTracks');
-          resolve();
-        })
-        .catch((error) => {
-          that.traceError(error, 'updateTracks');
-          reject(`處理歌曲清單錯誤`);
-        });
+        Promise
+          .all(promiseArray)
+          .then((result) => {
+            that.traceNotice(`同步清單完成，新增 ${addCount} 首歌曲，更新 ${updateCount} 首歌曲，移除 ${deleteCount} 首歌曲`, 'updateTracks');
+            resolve();
+          })
+          .catch((error) => {
+            that.traceError(error, 'updateTracks');
+            reject(`處理歌曲清單錯誤`);
+          });
+      });
     });
   }
 
