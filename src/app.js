@@ -36,7 +36,7 @@ class App {
     let that = this;
 
     return new Promise((resolve, reject) => {
-      readFileAsJSON(`${that.playlistPath}tracks.json`)
+      readFileAsJSON(`${that.playlistPath}_tracks.json`)
         .then((result) => {
           that.tracks = result;
           resolve();
@@ -71,6 +71,27 @@ class App {
           reject(`無法讀取資料庫XML檔案，路徑: ${libraryPath}`);
         });
     });
+  }
+
+  getTrackPathFromSrc(trackSrc) {
+    let trackSrcArray = trackSrc.split('/'),
+        trackFileName = trackSrcArray.pop(),
+        trackArtist = trackSrcArray.pop(),
+        trackAlbum = trackSrcArray.pop();
+
+    let trackPath = [];
+
+    if (trackArtist) {
+      trackPath[trackPath.length] = trackArtist;
+    }
+
+    if (trackAlbum) {
+      trackPath[trackPath.length] = trackAlbum;
+    }
+
+    trackPath[trackPath.length] = trackFileName;
+
+    return trackPath.join(' - ');
   }
 
   getPlaylistsAndTracksFromLibrary(library) {
@@ -134,11 +155,12 @@ class App {
           ];
 
       // let trackNewName = `${trackArtist} - ${trackAlbum} ${trackDiskNumber}-${trackNumber} ${trackName}.${trakcExt}`;
-      let trackNewName = `${trackPID}.${trakcExt}`;
+      // let trackNewName = `${trackPID}.${trakcExt}`;
+      let trackNewName = that.getTrackPathFromSrc(trackSrc);
 
       tracks[trackPID] = {
         pid: trackPID,
-        title: `${trackAlbum} - ${trackArtist}`,
+        title: `${trackName} - ${trackArtist}`,
         path: trackNewName,
         src: trackSrc,
         time: trackTotalTime,
@@ -213,7 +235,7 @@ class App {
           deleteCount += 1;
         }
 
-        promiseArray[promiseArray.length] = writeFileAsJSON(`${that.playlistPath}tracks.json`, tracks);
+        promiseArray[promiseArray.length] = writeFileAsJSON(`${that.playlistPath}_tracks.json`, tracks);
 
         Promise
           .all(promiseArray)
