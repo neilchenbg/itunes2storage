@@ -76,8 +76,8 @@ class App {
   getTrackPathFromSrc(trackSrc) {
     let trackSrcArray = trackSrc.split('/'),
         trackFileName = trackSrcArray.pop(),
-        trackArtist = trackSrcArray.pop(),
-        trackAlbum = trackSrcArray.pop();
+        trackAlbum = trackSrcArray.pop(),
+        trackArtist = trackSrcArray.pop();
 
     let trackPath = [];
 
