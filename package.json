@@ -1,6 +1,6 @@
 {
   "name": "itunes2storage",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Copy your playlist and file to storage from itunes library.",
   "main": "dist/app.js",
   "private": true,
